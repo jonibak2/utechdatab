@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="he">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Building Information</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo-container">
+        <img src="utech.png" alt="Logo" class="logo" />
+      </div>
+
+      <div class="total-count" id="totalCount">Total Buildings: 0</div>
+
+      <div class="search-container">
+        <select class="search-type" id="searchType">
+          <option value="address">Search by Address</option>
+          <option value="phone">Search by Contact</option>
+          <option value="contact">Search by Phone</option>
+        </select>
+        <input
+          type="text"
+          class="search-box"
+          id="searchBox"
+          placeholder="Search..."
+        />
+      </div>
+
+      <div id="citiesContainer">
+        <!-- Cities and buildings will be inserted here -->
+      </div>
+      <div id="loading" class="loading" style="display: none">Loading...</div>
+    </div>
+
+    <a href="https://github.com/jonibak2" target="_blank" class="github-link">
+      <i class="fab fa-github"></i>
+    </a>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+      import {
+        getDatabase,
+        ref,
+        get,
+      } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+      // Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyAcR7M-DdEG7vNNPBfnI_2GBr8Q23WlZhI",
+        authDomain: "utechf-b3b13.firebaseapp.com",
+        databaseURL: "https://utechf-b3b13-default-rtdb.firebaseio.com",
+        projectId: "utechf-b3b13",
+        storageBucket: "utechf-b3b13.firebasestorage.app",
+        messagingSenderId: "733270377585",
+        appId: "1:733270377585:web:45baab3de8b4383bcb87d0",
+      };
+
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      const database = getDatabase(app);
+
+      // DOM Elements
+      const citiesContainer = document.getElementById("citiesContainer");
+      const loading = document.getElementById("loading");
+      const searchBox = document.getElementById("searchBox");
+      const searchType = document.getElementById("searchType");
+      const totalCountElement = document.getElementById("totalCount");
+
+      // Extract city from address
+      function extractCity(address) {
+        const parts = address.split(",");
+        if (parts.length > 1) {
+          return parts[parts.length - 1].trim();
+        }
+        const cityPatterns = [
+          "תל אביב",
+          "ראשון לציון",
+          "רמת גן",
+          "חולון",
+          "ראש העין",
+          "נתניה",
+          "פתח תקוה",
+          "הוד השרון",
+          "אור יהודה",
+          "באר יעקב",
+          "אור עקיבא",
+        ];
+
+        for (const city of cityPatterns) {
+          if (address.includes(city)) {
+            return city;
+          }
+        }
+        return "אחר";
+      }
+
+      // Create building card
+      function createBuildingCard(building) {
+        const card = document.createElement("div");
+        card.className = "building-card";
+
+        const addressParts = building.address.split(",");
+        const streetAddress =
+          addressParts.length > 1 ? addressParts[0].trim() : building.address;
+
+        let html = `
+                <div class="info-group">
+                    <div class="info-label">Address:</div>
+                    <div class="info-value">${streetAddress}</div>
+                </div>
+            `;
+
+        if (building.entranceCode) {
+          html += `
+                    <div class="info-group">
+                        <div class="info-label">Entrance Code:</div>
+                        <div class="info-value">
+                            ${building.entranceCode}
+                            <button class="copy-btn" onclick="copyToClipboard('${building.entranceCode}')">Copy</button>
+                        </div>
+                    </div>
+                `;
+        }
+
+        if (building.parkingCode) {
+          html += `
+                    <div class="info-group">
+                        <div class="info-label">Parking Code:</div>
+                        <div class="info-value">
+                            ${building.parkingCode}
+                            <button class="copy-btn" onclick="copyToClipboard('${building.parkingCode}')">Copy</button>
+                        </div>
+                    </div>
+                `;
+        }
+
+        if (building.roofCode) {
+          html += `
+                    <div class="info-group">
+                        <div class="info-label">Roof Code:</div>
+                        <div class="info-value">
+                            ${building.roofCode}
+                            <button class="copy-btn" onclick="copyToClipboard('${building.roofCode}')">Copy</button>
+                        </div>
+                    </div>
+                `;
+        }
+
+        html += `
+                <div class="info-group">
+                    <div class="info-label">Contacts:</div>
+                    <div class="contact-info">
+            `;
+
+        if (building.contacts && building.contacts.length > 0) {
+          building.contacts.forEach((contact) => {
+            html += `
+                        <div class="contact-row">
+                            <div class="contact-phone">
+                                ${contact.phone}
+                                <button class="copy-btn" onclick="copyToClipboard('${contact.phone}')">Copy</button>
+                            </div>
+                            <div class="contact-name">${contact.name}</div>
+                        </div>
+                    `;
+          });
+        } else {
+          html += `<div class="contact-row">No contacts available</div>`;
+        }
+
+        html += `
+                    </div>
+                </div>
+            `;
+
+        card.innerHTML = html;
+        return card;
+      }
+
+      // Copy to clipboard
+      window.copyToClipboard = function (text) {
+        navigator.clipboard.writeText(text).then(() => {
+          const btn = event.target;
+          const originalText = btn.textContent;
+          btn.textContent = "Copied!";
+          setTimeout(() => {
+            btn.textContent = originalText;
+          }, 1000);
+        });
+      };
+
+      // Toggle city section
+      function toggleCitySection(header) {
+        const content = header.nextElementSibling;
+        content.classList.toggle("active");
+      }
+
+      // Search functionality
+      function performSearch() {
+        const searchText = searchBox.value.toLowerCase();
+        const searchBy = searchType.value;
+
+        document.querySelectorAll(".building-card").forEach((card) => {
+          let isVisible = false;
+
+          switch (searchBy) {
+            case "address":
+              const address = card
+                .querySelector(".info-value")
+                .textContent.toLowerCase();
+              isVisible = address.includes(searchText);
+              break;
+            case "phone":
+              const phones = Array.from(
+                card.querySelectorAll(".contact-row")
+              ).map((row) =>
+                row.querySelector("div:last-child").textContent.toLowerCase()
+              );
+              isVisible = phones.some((phone) => phone.includes(searchText));
+              break;
+            case "contact":
+              const contacts = Array.from(
+                card.querySelectorAll(".contact-row")
+              ).map((row) =>
+                row.querySelector("div:first-child").textContent.toLowerCase()
+              );
+              isVisible = contacts.some((contact) =>
+                contact.includes(searchText)
+              );
+              break;
+          }
+
+          card.style.display = isVisible ? "block" : "none";
+        });
+
+        updateVisibility();
+      }
+
+      // Update visibility of sections
+      function updateVisibility() {
+        document.querySelectorAll(".city-section").forEach((section) => {
+          const visibleCards = Array.from(
+            section.querySelectorAll(".building-card")
+          ).filter((card) => card.style.display !== "none");
+          section.style.display = visibleCards.length > 0 ? "block" : "none";
+
+          const countSpan = section.querySelector(".building-count");
+          if (countSpan) {
+            countSpan.textContent = `${visibleCards.length} buildings`;
+          }
+        });
+      }
+
+      // Event listeners
+      searchBox.addEventListener("input", performSearch);
+      searchType.addEventListener("change", () => {
+        searchBox.placeholder = `Search by ${searchType.options[
+          searchType.selectedIndex
+        ].text.toLowerCase()}...`;
+        performSearch();
+      });
+
+      // Load buildings
+      async function loadBuildings() {
+        loading.style.display = "block";
+        citiesContainer.innerHTML = "";
+
+        try {
+          const snapshot = await get(ref(database, "buildings"));
+          const citiesMap = new Map();
+          let totalBuildings = 0;
+
+          snapshot.forEach((childSnapshot) => {
+            const building = childSnapshot.val();
+            const city = extractCity(building.address);
+
+            if (!citiesMap.has(city)) {
+              citiesMap.set(city, []);
+            }
+            citiesMap.get(city).push(building);
+            totalBuildings++;
+          });
+
+          totalCountElement.textContent = `Total Buildings: ${totalBuildings}`;
+
+          Array.from(citiesMap.entries())
+            .sort(([cityA], [cityB]) => cityA.localeCompare(cityB))
+            .forEach(([city, cityBuildings]) => {
+              const citySection = document.createElement("div");
+              citySection.className = "city-section";
+
+              const header = document.createElement("div");
+              header.className = "city-header";
+              header.innerHTML = `
+                            <div class="city-name">${city}</div>
+                            <span class="building-count">${cityBuildings.length} buildings</span>
+                        `;
+              header.onclick = () => toggleCitySection(header);
+
+              const content = document.createElement("div");
+              content.className = "city-content";
+
+              cityBuildings
+                .sort((a, b) => a.address.localeCompare(b.address))
+                .forEach((building) => {
+                  content.appendChild(createBuildingCard(building));
+                });
+
+              citySection.appendChild(header);
+              citySection.appendChild(content);
+              citiesContainer.appendChild(citySection);
+            });
+        } catch (error) {
+          console.error("Error loading buildings:", error);
+          alert("Error loading buildings: " + error.message);
+        } finally {
+          loading.style.display = "none";
+        }
+      }
+
+      // Initialize
+      loadBuildings();
+    </script>
+
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #ffffff;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: #dbdbdb;
+        padding: 30px;
+        border-radius: 0;
+        box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+        border-left: 5px solid #fa9437;
+      }
+      .logo-container {
+        width: 100%;
+        height: 200px;
+        margin-bottom: 30px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+      }
+      .logo {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+      }
+      .city-section {
+        margin-bottom: 30px;
+        background: #ffffff;
+        border-radius: 0;
+        overflow: hidden;
+        border: 1px solid #e0e0e0;
+      }
+      .city-header {
+        background: #639637;
+        color: white;
+        padding: 15px 20px;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .city-name {
+        flex: 1;
+        text-align: left;
+      }
+      .city-header:hover {
+        background: #5a8337;
+      }
+      .city-content {
+        padding: 0 20px;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+      }
+      .city-content.active {
+        max-height: none;
+        padding: 20px;
+      }
+      .building-card {
+        background: #ffffff;
+        border-radius: 0;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid #e0e0e0;
+        border-left: 3px solid #696db2;
+      }
+      .building-card:last-child {
+        margin-bottom: 0;
+      }
+      .info-group {
+        margin-bottom: 15px;
+      }
+      .info-label {
+        font-size: 14px;
+        color: #666666;
+        margin-bottom: 5px;
+      }
+      .info-value {
+        font-size: 16px;
+        color: #333333;
+        word-break: break-word;
+      }
+      .contact-info {
+        background: #f9f9f9;
+        border-radius: 0;
+        padding: 10px 15px;
+        margin-top: 10px;
+      }
+      .contact-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #e0e0e0;
+      }
+      .contact-row:last-child {
+        border-bottom: none;
+      }
+      .contact-phone {
+        color: #5a8337;
+        font-weight: bold;
+      }
+      .contact-name {
+        color: #333333;
+        text-align: right;
+      }
+      .loading {
+        text-align: center;
+        color: #666666;
+        font-size: 14px;
+        margin: 20px 0;
+      }
+      .building-count {
+        font-size: 14px;
+        color: #ffffff;
+        font-weight: normal;
+        margin-left: left;
+      }
+      .total-count {
+        text-align: center;
+        color: #666666;
+        margin-bottom: 20px;
+        font-size: 16px;
+      }
+      .search-container {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        width: 100%;
+      }
+      .search-box {
+        flex: 1;
+        padding: 12px;
+        background: #ffffff;
+        border: 2px solid #5a8337;
+        border-radius: 0;
+        color: #333333;
+        font-size: 14px;
+      }
+      .search-box:focus {
+        outline: none;
+        border-color: #666666;
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+      }
+      .search-type {
+        background: #ffffff;
+        border: 2px solid #5a8337;
+        border-radius: 0;
+        color: #333333;
+        padding: 0 10px;
+      }
+      .copy-btn {
+        background: #5a8337;
+        border: none;
+        color: white;
+        cursor: pointer;
+        padding: 3px 8px;
+        margin-left: 5px;
+        font-size: 12px;
+        border-radius: 0;
+        transition: background 0.2s;
+      }
+      .copy-btn:hover {
+        background: #64913d;
+      }
+      .github-link {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #dbdbdb;
+        width: 40px;
+        height: 40px;
+        border-radius: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+        color: #333333;
+        text-decoration: none;
+        transition: transform 0.3s;
+      }
+
+      .github-link:hover {
+        transform: scale(1.1);
+      }
+
+      .github-link i {
+        font-size: 24px;
+      }
+
+      @media screen and (max-width: 768px) {
+        body {
+          padding: 10px;
+        }
+        .container {
+          padding: 15px;
+          margin: 0;
+          width: 100%;
+          max-width: 100%;
+        }
+        .logo-container {
+          height: 150px;
+        }
+        .search-container {
+          flex-direction: column;
+          gap: 15px;
+          padding: 0;
+        }
+        .search-type {
+          width: 100%;
+          padding: 12px;
+          margin: 0;
+        }
+        .search-box {
+          width: 100%;
+          margin: 0;
+          box-sizing: border-box;
+        }
+        .city-header {
+          padding: 12px 15px;
+          font-size: 16px;
+        }
+        .building-card {
+          padding: 12px;
+        }
+        .contact-row {
+          flex-direction: column;
+          gap: 8px;
+          padding: 12px 0;
+        }
+        .contact-phone {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .contact-name {
+          font-size: 14px;
+        }
+        .copy-btn {
+          padding: 5px 10px;
+        }
+        .info-group {
+          margin-bottom: 12px;
+        }
+        .info-label {
+          font-size: 13px;
+        }
+        .info-value {
+          font-size: 15px;
+        }
+        .github-link {
+          bottom: 15px;
+          right: 15px;
+          width: 35px;
+          height: 35px;
+        }
+      }
+
+      @media screen and (max-width: 480px) {
+        .city-header {
+          font-size: 14px;
+        }
+        .building-count {
+          font-size: 12px;
+        }
+        .contact-info {
+          padding: 8px 12px;
+        }
+        .copy-btn {
+          padding: 4px 8px;
+          font-size: 11px;
+        }
+      }
+    </style>
+  </body>
+</html>
